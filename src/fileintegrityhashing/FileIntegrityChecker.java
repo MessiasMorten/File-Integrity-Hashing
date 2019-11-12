@@ -12,6 +12,7 @@ import java.io.OutputStream;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Scanner;
 
 import org.apache.commons.codec.digest.DigestUtils;
 
@@ -41,6 +42,7 @@ public class FileIntegrityChecker extends Application{
 	Integer file_count = 0;
 	BorderPane bPane = new BorderPane();
 	static ArrayList<String> hashfileContents = new ArrayList<String>();
+	static ArrayList<String> hashfromFileContents = new ArrayList<String>();
 	
 	
 	@Override
@@ -185,6 +187,28 @@ public class FileIntegrityChecker extends Application{
 	    	search(file);
 	    }
 
+	    public static void readFromFile() {
+	    	
+	    	String filepath = hash_path.getText();
+	    	Scanner fileScan;
+	    	
+	    	try {
+				fileScan = new Scanner(new File(filepath));
+				fileScan.useDelimiter(",");
+				while (fileScan.hasNext()) {
+					hashfromFileContents.add(fileScan.next());
+				}
+			} catch (FileNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+	    	
+	    for(int i=0; i<hashfromFileContents.size(); i++) {
+	    	text_log.appendText("\nRead item from file: " + hashfromFileContents.get(i));
+	    }
+	    	
+	    }
+	    
 class hashHandler implements EventHandler<ActionEvent> {
 	@Override
 	public void handle(ActionEvent arg0) {
@@ -203,7 +227,7 @@ class hashDirHandler implements EventHandler<ActionEvent> {
 class hashVerifyHandler implements EventHandler<ActionEvent> {
 	@Override
 	public void handle(ActionEvent arg0) {
-		
+		FileIntegrityChecker.readFromFile();
 	}
 }
 	
@@ -218,6 +242,7 @@ class saveHashHandler implements EventHandler<ActionEvent> {
 			}
 		}
 	}
+
 }
 	
 
