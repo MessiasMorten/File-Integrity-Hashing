@@ -1,5 +1,6 @@
 package fileintegrityhashing;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -9,6 +10,16 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.security.InvalidKeyException;
+import java.security.KeyStore;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.Signature;
+import java.security.SignatureException;
+import java.security.UnrecoverableKeyException;
+import java.security.cert.CertificateException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Date;
@@ -30,20 +41,25 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
-public class FileIntegrityChecker extends Application{
+public class FileIntegrityChecker extends Application {
 
 	static TextField dir_path = new TextField("Directory path");
-	TextField ks_path = new TextField("Keystore path");
-	TextField ks_password = new TextField("password");
-	TextField ks_alias = new TextField("alias");
+	static TextField ks_path = new TextField("Keystore path");
+	static TextField ks_password = new TextField("password");
+	static TextField ks_alias = new TextField("alias");
 	static TextField hash_path = new TextField("Save hash file path");
 	static TextArea text_log = new TextArea();
+	static KeyStore ks;
 	Integer dir_count = 0;
 	Integer file_count = 0;
 	BorderPane bPane = new BorderPane();
 	static ArrayList<String> hashdirContents = new ArrayList<String>();
 	static ArrayList<String> hashfromFileContents = new ArrayList<String>();
 	static ArrayList<String> errorLogFromVerify = new ArrayList<String>();
+	static String alias;
+	static char[] password;
+	static PrivateKey prikey;
+	static PublicKey pubkey;
 	
 	
 	@Override
@@ -279,7 +295,135 @@ public class FileIntegrityChecker extends Application{
     	 	}
     	 	
 	    }
-	
+
+	    public static void setupKeystore() {
+	    	
+	    	try {
+				ks = KeyStore.getInstance("JKS");
+		    	FileInputStream ksStream = new FileInputStream(ks_path.getText());
+		    	BufferedInputStream ksBuffStream = new BufferedInputStream(ksStream);
+		    	
+		    	password = ks_password.getText().toCharArray();
+		    	ks.load(ksBuffStream, password);
+		    	
+		    	alias = new String(ks_alias.getText());
+		    	prikey = (PrivateKey) ks.getKey(alias, password);
+		    	
+		    	java.security.cert.Certificate cert = ks.getCertificate(alias);
+		    	
+		    	pubkey = cert.getPublicKey();
+		    	
+			} catch (KeyStoreException | NoSuchAlgorithmException | CertificateException | IOException | UnrecoverableKeyException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+	    	
+
+	    	
+	    	
+	    }
+	    
+	    public static void setupSignature() {
+	    	
+	    	try {
+				Signature sign = Signature.getInstance("SHA1withRSA");
+				sign.initSign(prikey);
+				
+	    		String filepath = hash_path.getText();
+	    		File newFile = new File(filepath);
+	    		FileInputStream fis = new FileInputStream(newFile);
+	    		BufferedInputStream bufin = new BufferedInputStream(fis);
+	    		
+	    		byte[] buffer = new byte[1024];
+	    		int len;
+	    		while (bufin.available() != 0) {
+	    		len = bufin.read(buffer);
+	    		
+	    		sign.update(buffer, 0, len);
+	    		
+	    		};
+	    		bufin.close();
+				
+	    		byte signature[] = sign.sign();
+	    		
+	    		String signaturePath = newFile.getParent() + "/" + getFileNameWithoutExtension(newFile)+ "Signed" + ".txt";
+	    		FileOutputStream output = new FileOutputStream(signaturePath);
+	    		output.write(signature);
+	    		output.close();
+	    		text_log.appendText("\nSigned newly created hashfile. Signature saved at " + signaturePath);
+				
+			} catch (NoSuchAlgorithmException | InvalidKeyException | IOException | SignatureException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+	    	
+	    }
+
+	    public static void checkSignature() {
+	    	
+	    	try {
+	    		
+	    		setupKeystore();
+	    		String filepath = hash_path.getText();
+	    		File newFile = new File(filepath);
+	    		String signaturePath = newFile.getParent() + "/" + getFileNameWithoutExtension(newFile)+ "Signed" + ".txt";
+	    		File newestFile = new File(signaturePath);
+	    		
+	            FileInputStream signbytes = new FileInputStream(newestFile);
+	            byte[] sigToVerify = new byte[signbytes.available()]; 
+	            signbytes.read(sigToVerify );
+	            signbytes.close();
+	            
+	            Signature sig = Signature.getInstance("SHA1withRSA");
+	            sig.initVerify(pubkey);
+	            
+	            FileInputStream datafis = new FileInputStream(newFile);
+	            BufferedInputStream bufin = new BufferedInputStream(datafis);
+	 
+	            byte[] buffer = new byte[1024];
+	            int len;
+	            while (bufin.available() != 0) {
+	                len = bufin.read(buffer);
+	                sig.update(buffer, 0, len);
+	                };
+	 
+	            bufin.close();
+	 
+	 
+	            boolean verified = sig.verify(sigToVerify);
+
+	    		if (verified == true) {
+	    			text_log.appendText("\nThe hashfile was successfully verified.");
+	    		} else if (verified == false) {
+	    			text_log.appendText("\nThe hashfile could not be verified. Shady business.");
+	    		}
+	    		
+
+			} catch (NoSuchAlgorithmException | InvalidKeyException | IOException | SignatureException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+	    	
+	    	
+	    }
+	    
+	    private static String getFileNameWithoutExtension(File file) {
+	        String fileName = "";
+	 
+	        try {
+	            if (file != null && file.exists()) {
+	                String name = file.getName();
+	                fileName = name.replaceFirst("[.][^.]+$", "");
+	            }
+	        } catch (Exception e) {
+	            e.printStackTrace();
+	            fileName = "";
+	        }
+	 
+	        return fileName;
+	 
+	    }
+	    
 	    
 class hashHandler implements EventHandler<ActionEvent> {
 	@Override
@@ -310,7 +454,9 @@ class hashVerifyHandler implements EventHandler<ActionEvent> {
 	public void handle(ActionEvent arg0) {
     	hashdirContents.clear();
     	hashfromFileContents.clear();
+    	FileIntegrityChecker.checkSignature();
 		FileIntegrityChecker.compareAndVerify();
+		
 	}
 }
 	
@@ -318,9 +464,9 @@ class saveHashHandler implements EventHandler<ActionEvent> {
 	@Override
 	public void handle(ActionEvent arg0) {
 			try {
-		    	hashdirContents.clear();
-		    	hashfromFileContents.clear();
 				FileIntegrityChecker.createHashFile();
+				FileIntegrityChecker.setupKeystore();
+				FileIntegrityChecker.setupSignature();
 			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
